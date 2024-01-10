@@ -14,6 +14,8 @@
 
 mod util;
 
+use std::sync::Arc;
+
 use pretty_assertions::assert_eq;
 
 use rocksdb::{Options, DB};
@@ -47,6 +49,7 @@ fn test_snapshot_pinnable_slice() {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     let db = DB::open(&opts, &path).unwrap();
+    let db = Arc::new(db);
 
     db.put(b"k1", b"value12345").unwrap();
     let snap = db.snapshot();

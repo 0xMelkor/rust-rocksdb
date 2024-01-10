@@ -1359,49 +1359,49 @@ impl<T: ThreadMode, D: DBInner> DBCommon<T, D> {
         })
     }
 
-    pub fn iterator<'a: 'b, 'b>(
-        &'a self,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    pub fn iterator(
+        &self,
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let readopts = ReadOptions::default();
         self.iterator_opt(mode, readopts)
     }
 
-    pub fn iterator_opt<'a: 'b, 'b>(
-        &'a self,
-        mode: IteratorMode,
+    pub fn iterator_opt(
+        &self,
+        mode: IteratorMode<&[u8]>,
         readopts: ReadOptions,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    ) -> DBIteratorWithThreadMode<Self> {
         DBIteratorWithThreadMode::new(self, readopts, mode)
     }
 
     /// Opens an iterator using the provided ReadOptions.
     /// This is used when you want to iterate over a specific ColumnFamily with a modified ReadOptions
-    pub fn iterator_cf_opt<'a: 'b, 'b>(
-        &'a self,
+    pub fn iterator_cf_opt(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
         readopts: ReadOptions,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         DBIteratorWithThreadMode::new_cf(self, cf_handle.inner(), readopts, mode)
     }
 
     /// Opens an iterator with `set_total_order_seek` enabled.
     /// This must be used to iterate across prefixes when `set_memtable_factory` has been called
     /// with a Hash-based implementation.
-    pub fn full_iterator<'a: 'b, 'b>(
-        &'a self,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    pub fn full_iterator(
+        &self,
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_total_order_seek(true);
         DBIteratorWithThreadMode::new(self, opts, mode)
     }
 
-    pub fn prefix_iterator<'a: 'b, 'b, P: AsRef<[u8]>>(
-        &'a self,
+    pub fn prefix_iterator<P: AsRef<[u8]>>(
+        &self,
         prefix: P,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_prefix_same_as_start(true);
         DBIteratorWithThreadMode::new(
@@ -1411,33 +1411,33 @@ impl<T: ThreadMode, D: DBInner> DBCommon<T, D> {
         )
     }
 
-    pub fn iterator_cf<'a: 'b, 'b>(
-        &'a self,
+    pub fn iterator_cf(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let opts = ReadOptions::default();
         DBIteratorWithThreadMode::new_cf(self, cf_handle.inner(), opts, mode)
     }
 
-    pub fn full_iterator_cf<'a: 'b, 'b>(
-        &'a self,
+    pub fn full_iterator_cf(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_total_order_seek(true);
         DBIteratorWithThreadMode::new_cf(self, cf_handle.inner(), opts, mode)
     }
 
-    pub fn prefix_iterator_cf<'a, P: AsRef<[u8]>>(
-        &'a self,
+    pub fn prefix_iterator_cf<P: AsRef<[u8]>>(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
         prefix: P,
-    ) -> DBIteratorWithThreadMode<'a, Self> {
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_prefix_same_as_start(true);
-        DBIteratorWithThreadMode::<'a, Self>::new_cf(
+        DBIteratorWithThreadMode::<Self>::new_cf(
             self,
             cf_handle.inner(),
             opts,
@@ -1446,39 +1446,39 @@ impl<T: ThreadMode, D: DBInner> DBCommon<T, D> {
     }
 
     /// Opens a raw iterator over the database, using the default read options
-    pub fn raw_iterator<'a: 'b, 'b>(&'a self) -> DBRawIteratorWithThreadMode<'b, Self> {
+    pub fn raw_iterator(&self) -> DBRawIteratorWithThreadMode<Self> {
         let opts = ReadOptions::default();
         DBRawIteratorWithThreadMode::new(self, opts)
     }
 
     /// Opens a raw iterator over the given column family, using the default read options
-    pub fn raw_iterator_cf<'a: 'b, 'b>(
-        &'a self,
+    pub fn raw_iterator_cf(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
-    ) -> DBRawIteratorWithThreadMode<'b, Self> {
+    ) -> DBRawIteratorWithThreadMode<Self> {
         let opts = ReadOptions::default();
         DBRawIteratorWithThreadMode::new_cf(self, cf_handle.inner(), opts)
     }
 
     /// Opens a raw iterator over the database, using the given read options
-    pub fn raw_iterator_opt<'a: 'b, 'b>(
-        &'a self,
+    pub fn raw_iterator_opt(
+        &self,
         readopts: ReadOptions,
-    ) -> DBRawIteratorWithThreadMode<'b, Self> {
+    ) -> DBRawIteratorWithThreadMode<Self> {
         DBRawIteratorWithThreadMode::new(self, readopts)
     }
 
     /// Opens a raw iterator over the given column family, using the given read options
-    pub fn raw_iterator_cf_opt<'a: 'b, 'b>(
-        &'a self,
+    pub fn raw_iterator_cf_opt(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
         readopts: ReadOptions,
-    ) -> DBRawIteratorWithThreadMode<'b, Self> {
+    ) -> DBRawIteratorWithThreadMode<Self> {
         DBRawIteratorWithThreadMode::new_cf(self, cf_handle.inner(), readopts)
     }
 
-    pub fn snapshot(&self) -> SnapshotWithThreadMode<Self> {
-        SnapshotWithThreadMode::<Self>::new(self)
+    pub fn snapshot(self: &Arc<Self>) -> SnapshotWithThreadMode<Self> {
+        SnapshotWithThreadMode::<Self>::new(self.clone())
     }
 
     pub fn put_opt<K, V>(&self, key: K, value: V, writeopts: &WriteOptions) -> Result<(), Error>

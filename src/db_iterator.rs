@@ -20,7 +20,7 @@ use libc::{c_char, c_uchar, size_t};
 use std::{marker::PhantomData, slice};
 
 /// A type alias to keep compatibility. See [`DBRawIteratorWithThreadMode`] for details
-pub type DBRawIterator<'a> = DBRawIteratorWithThreadMode<'a, DB>;
+pub type DBRawIterator = DBRawIteratorWithThreadMode<DB>;
 
 /// An iterator over a database or column family, with specifiable
 /// ranges and direction.
@@ -70,7 +70,7 @@ pub type DBRawIterator<'a> = DBRawIteratorWithThreadMode<'a, DB>;
 /// }
 /// let _ = DB::destroy(&Options::default(), path);
 /// ```
-pub struct DBRawIteratorWithThreadMode<'a, D: DBAccess> {
+pub struct DBRawIteratorWithThreadMode<D: DBAccess> {
     inner: std::ptr::NonNull<ffi::rocksdb_iterator_t>,
 
     /// When iterate_lower_bound or iterate_upper_bound are set, the inner
@@ -83,10 +83,10 @@ pub struct DBRawIteratorWithThreadMode<'a, D: DBAccess> {
     /// point to vectors we own.  See issue #660.
     _readopts: ReadOptions,
 
-    db: PhantomData<&'a D>,
+    db: PhantomData<D>,
 }
 
-impl<'a, D: DBAccess> DBRawIteratorWithThreadMode<'a, D> {
+impl<'a, D: DBAccess> DBRawIteratorWithThreadMode<D> {
     pub(crate) fn new(db: &D, readopts: ReadOptions) -> Self {
         let inner = unsafe { db.create_iterator(&readopts) };
         Self::from_inner(inner, readopts)
@@ -357,7 +357,7 @@ impl<'a, D: DBAccess> DBRawIteratorWithThreadMode<'a, D> {
     }
 }
 
-impl<'a, D: DBAccess> Drop for DBRawIteratorWithThreadMode<'a, D> {
+impl<D: DBAccess> Drop for DBRawIteratorWithThreadMode<D> {
     fn drop(&mut self) {
         unsafe {
             ffi::rocksdb_iter_destroy(self.inner.as_ptr());
@@ -365,11 +365,11 @@ impl<'a, D: DBAccess> Drop for DBRawIteratorWithThreadMode<'a, D> {
     }
 }
 
-unsafe impl<'a, D: DBAccess> Send for DBRawIteratorWithThreadMode<'a, D> {}
-unsafe impl<'a, D: DBAccess> Sync for DBRawIteratorWithThreadMode<'a, D> {}
+unsafe impl<D: DBAccess> Send for DBRawIteratorWithThreadMode<D> {}
+unsafe impl<D: DBAccess> Sync for DBRawIteratorWithThreadMode<D> {}
 
 /// A type alias to keep compatibility. See [`DBIteratorWithThreadMode`] for details
-pub type DBIterator<'a> = DBIteratorWithThreadMode<'a, DB>;
+pub type DBIterator = DBIteratorWithThreadMode<DB>;
 
 /// An iterator over a database or column family, with specifiable
 /// ranges and direction.
@@ -406,8 +406,8 @@ pub type DBIterator<'a> = DBIteratorWithThreadMode<'a, DB>;
 /// }
 /// let _ = DB::destroy(&Options::default(), path);
 /// ```
-pub struct DBIteratorWithThreadMode<'a, D: DBAccess> {
-    raw: DBRawIteratorWithThreadMode<'a, D>,
+pub struct DBIteratorWithThreadMode<D: DBAccess> {
+    raw: DBRawIteratorWithThreadMode<D>,
     direction: Direction,
     done: bool,
 }
@@ -421,22 +421,22 @@ pub enum Direction {
 pub type KVBytes = (Box<[u8]>, Box<[u8]>);
 
 #[derive(Copy, Clone)]
-pub enum IteratorMode<'a> {
+pub enum IteratorMode<B: AsRef<[u8]>> {
     Start,
     End,
-    From(&'a [u8], Direction),
+    From(B, Direction),
 }
 
-impl<'a, D: DBAccess> DBIteratorWithThreadMode<'a, D> {
-    pub(crate) fn new(db: &D, readopts: ReadOptions, mode: IteratorMode) -> Self {
+impl<D: DBAccess> DBIteratorWithThreadMode<D> {
+    pub(crate) fn new<B: AsRef<[u8]>>(db: &D, readopts: ReadOptions, mode: IteratorMode<B>) -> Self {
         Self::from_raw(DBRawIteratorWithThreadMode::new(db, readopts), mode)
     }
 
-    pub(crate) fn new_cf(
-        db: &'a D,
+    pub(crate) fn new_cf<B: AsRef<[u8]>>(
+        db: &D,
         cf_handle: *mut ffi::rocksdb_column_family_handle_t,
         readopts: ReadOptions,
-        mode: IteratorMode,
+        mode: IteratorMode<B>,
     ) -> Self {
         Self::from_raw(
             DBRawIteratorWithThreadMode::new_cf(db, cf_handle, readopts),
@@ -444,7 +444,7 @@ impl<'a, D: DBAccess> DBIteratorWithThreadMode<'a, D> {
         )
     }
 
-    fn from_raw(raw: DBRawIteratorWithThreadMode<'a, D>, mode: IteratorMode) -> Self {
+    fn from_raw<B: AsRef<[u8]>>(raw: DBRawIteratorWithThreadMode<D>, mode: IteratorMode<B>) -> Self {
         let mut rv = DBIteratorWithThreadMode {
             raw,
             direction: Direction::Forward, // blown away by set_mode()
@@ -454,7 +454,7 @@ impl<'a, D: DBAccess> DBIteratorWithThreadMode<'a, D> {
         rv
     }
 
-    pub fn set_mode(&mut self, mode: IteratorMode) {
+    pub fn set_mode<B: AsRef<[u8]>>(&mut self, mode: IteratorMode<B>) {
         self.done = false;
         self.direction = match mode {
             IteratorMode::Start => {
@@ -477,7 +477,7 @@ impl<'a, D: DBAccess> DBIteratorWithThreadMode<'a, D> {
     }
 }
 
-impl<'a, D: DBAccess> Iterator for DBIteratorWithThreadMode<'a, D> {
+impl<D: DBAccess> Iterator for DBIteratorWithThreadMode<D> {
     type Item = Result<KVBytes, Error>;
 
     fn next(&mut self) -> Option<Result<KVBytes, Error>> {
@@ -497,10 +497,10 @@ impl<'a, D: DBAccess> Iterator for DBIteratorWithThreadMode<'a, D> {
     }
 }
 
-impl<'a, D: DBAccess> std::iter::FusedIterator for DBIteratorWithThreadMode<'a, D> {}
+impl<D: DBAccess> std::iter::FusedIterator for DBIteratorWithThreadMode<D> {}
 
-impl<'a, D: DBAccess> Into<DBRawIteratorWithThreadMode<'a, D>> for DBIteratorWithThreadMode<'a, D> {
-    fn into(self) -> DBRawIteratorWithThreadMode<'a, D> {
+impl<D: DBAccess> Into<DBRawIteratorWithThreadMode<D>> for DBIteratorWithThreadMode<D> {
+    fn into(self) -> DBRawIteratorWithThreadMode<D> {
         self.raw
     }
 }

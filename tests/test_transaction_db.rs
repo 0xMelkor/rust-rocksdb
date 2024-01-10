@@ -15,6 +15,8 @@
 
 mod util;
 
+use std::sync::Arc;
+
 use pretty_assertions::assert_eq;
 
 use rocksdb::{
@@ -98,7 +100,9 @@ fn multi_get() {
 
     {
         let db: TransactionDB = TransactionDB::open_default(&path).unwrap();
+        let db = Arc::new(db);
         let initial_snap = db.snapshot();
+
         db.put(b"k1", b"v1").unwrap();
         let k1_snap = db.snapshot();
         db.put(b"k2", b"v2").unwrap();
@@ -120,10 +124,11 @@ fn multi_get() {
 
         assert_values(values);
 
-        let values = DBAccess::multi_get_opt(&db, [b"k0", b"k1", b"k2"], &Default::default())
-            .into_iter()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
+        let values =
+            DBAccess::multi_get_opt(db.as_ref(), [b"k0", b"k1", b"k2"], &Default::default())
+                .into_iter()
+                .map(Result::unwrap)
+                .collect::<Vec<_>>();
 
         assert_values(values);
 
@@ -335,6 +340,7 @@ fn snapshot_test() {
     let path = DBPath::new("_rust_rocksdb_transaction_db_snapshottest");
     {
         let db: TransactionDB = TransactionDB::open_default(&path).unwrap();
+        let db = Arc::new(db);
 
         assert!(db.put(b"k1", b"v1111").is_ok());
 
@@ -440,7 +446,7 @@ fn transaction() {
         let err = db.put(b"k1", b"v4").unwrap_err();
         assert_eq!(err.kind(), ErrorKind::TimedOut);
 
-        txn1.commit().unwrap();
+        Arc::new(txn1).commit().unwrap();
         assert_eq!(db.get(b"k1").unwrap().unwrap().as_slice(), b"v2");
     }
 }
@@ -529,7 +535,7 @@ fn transaction_rollback() {
         txn.rollback().unwrap();
         assert!(txn.get(b"k1").unwrap().is_none());
 
-        txn.commit().unwrap();
+        Arc::new(txn).commit().unwrap();
 
         assert!(db.get(b"k2").unwrap().is_none());
     }
@@ -570,7 +576,7 @@ fn transaction_cf() {
         assert!(txn.get_cf(&cf2, b"k1").unwrap().is_none());
         assert_eq!(txn.get_cf(&cf2, b"k2").unwrap().unwrap(), b"v2");
 
-        txn.commit().unwrap();
+        Arc::new(txn).commit().unwrap();
     }
 }
 
@@ -581,6 +587,8 @@ fn transaction_snapshot() {
         let db: TransactionDB = TransactionDB::open_default(&path).unwrap();
 
         let txn = db.transaction();
+        let txn = Arc::new(txn);
+
         let snapshot = txn.snapshot();
         assert!(snapshot.get(b"k1").unwrap().is_none());
         db.put(b"k1", b"v1").unwrap();
@@ -588,9 +596,13 @@ fn transaction_snapshot() {
 
         let mut opts = TransactionOptions::default();
         opts.set_snapshot(true);
+
         let txn = db.transaction_opt(&WriteOptions::default(), &opts);
+        let txn = Arc::new(txn);
+
         db.put(b"k2", b"v2").unwrap();
-        let snapshot = txn.snapshot();
+        let snapshot = txn.clone().snapshot();
+
         assert!(snapshot.get(b"k2").unwrap().is_none());
         assert_eq!(txn.get(b"k2").unwrap().unwrap(), b"v2");
         assert_eq!(
@@ -607,6 +619,7 @@ fn two_phase_commit() {
         let db: TransactionDB = TransactionDB::open_default(&path).unwrap();
 
         let txn = db.transaction();
+        let txn = Arc::new(txn);
         txn.put(b"k1", b"v1").unwrap();
         txn.set_name(b"txn1").unwrap();
         txn.prepare().unwrap();
@@ -663,7 +676,7 @@ fn two_phase_commit() {
             let name = txn.get_name().unwrap();
 
             if name == b"t1" {
-                txn.commit().unwrap();
+                Arc::new(txn).commit().unwrap();
             } else if name == b"t2" {
                 txn.rollback().unwrap();
             } else {

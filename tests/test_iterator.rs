@@ -275,7 +275,7 @@ fn test_iter_range() {
 
     fn test(
         db: &DB,
-        mode: IteratorMode,
+        mode: IteratorMode<&[u8]>,
         range: impl rocksdb::IterateBounds,
         want: std::ops::Range<usize>,
         reverse: bool,

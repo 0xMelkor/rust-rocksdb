@@ -248,7 +248,7 @@ fn snapshot_test() {
     let path = DBPath::new("_rust_rocksdb_snapshottest");
     {
         let db = DB::open_default(&path).unwrap();
-
+        let db = Arc::new(db);
         assert!(db.put(b"k1", b"v1111").is_ok());
 
         let snap = db.snapshot();
@@ -263,11 +263,11 @@ fn snapshot_test() {
 
 #[derive(Clone)]
 struct SnapshotWrapper {
-    snapshot: Arc<Snapshot<'static>>,
+    snapshot: Arc<Snapshot>,
 }
 
 impl SnapshotWrapper {
-    fn new(db: &DB) -> Self {
+    fn new(db: Arc<DB>) -> Self {
         Self {
             snapshot: Arc::new(unsafe { mem::transmute(db.snapshot()) }),
         }
@@ -285,11 +285,11 @@ impl SnapshotWrapper {
 fn sync_snapshot_test() {
     let path = DBPath::new("_rust_rocksdb_sync_snapshottest");
     let db = DB::open_default(&path).unwrap();
-
+    let db = Arc::new(db);
     assert!(db.put(b"k1", b"v1").is_ok());
     assert!(db.put(b"k2", b"v2").is_ok());
 
-    let wrapper = SnapshotWrapper::new(&db);
+    let wrapper = SnapshotWrapper::new(db.clone());
     let wrapper_1 = wrapper.clone();
     let handler_1 = thread::spawn(move || wrapper_1.check("k1", b"v1"));
     let handler_2 = thread::spawn(move || wrapper.check("k2", b"v2"));
@@ -1288,8 +1288,11 @@ fn multi_get() {
 
     {
         let db = DB::open_default(&path).unwrap();
+        let db = Arc::new(db);
         let initial_snap = db.snapshot();
+
         db.put(b"k1", b"v1").unwrap();
+
         let k1_snap = db.snapshot();
         db.put(b"k2", b"v2").unwrap();
 
@@ -1310,10 +1313,11 @@ fn multi_get() {
 
         assert_values(values);
 
-        let values = DBAccess::multi_get_opt(&db, [b"k0", b"k1", b"k2"], &Default::default())
-            .into_iter()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
+        let values =
+            DBAccess::multi_get_opt(db.as_ref(), [b"k0", b"k1", b"k2"], &Default::default())
+                .into_iter()
+                .map(Result::unwrap)
+                .collect::<Vec<_>>();
 
         assert_values(values);
 

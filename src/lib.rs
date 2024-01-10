@@ -250,8 +250,8 @@ mod test {
         }
 
         is_send::<DB>();
-        is_send::<DBIterator<'_>>();
-        is_send::<DBRawIterator<'_>>();
+        is_send::<DBIterator>();
+        is_send::<DBRawIterator>();
         is_send::<Snapshot>();
         is_send::<Options>();
         is_send::<ReadOptions>();
@@ -271,7 +271,7 @@ mod test {
         is_send::<EnvWrapper>();
         is_send::<TransactionDB>();
         is_send::<OptimisticTransactionDB>();
-        is_send::<Transaction<'_, TransactionDB>>();
+        is_send::<Transaction<TransactionDB>>();
         is_send::<TransactionDBOptions>();
         is_send::<OptimisticTransactionOptions>();
         is_send::<TransactionOptions>();
@@ -286,7 +286,7 @@ mod test {
         }
 
         is_sync::<DB>();
-        is_sync::<Snapshot>();
+        is_sync::<Snapshot<>>();
         is_sync::<Options>();
         is_sync::<ReadOptions>();
         is_sync::<WriteOptions>();

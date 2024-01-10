@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 
-use std::{marker::PhantomData, ptr};
+use std::{marker::PhantomData, ptr, sync::Arc};
 
 use crate::{
     db::{convert_values, DBAccess},
@@ -28,14 +28,14 @@ use libc::{c_char, c_void, size_t};
 ///
 /// [`TransactionDB`]: crate::TransactionDB
 /// [`OptimisticTransactionDB`]: crate::OptimisticTransactionDB
-pub struct Transaction<'db, DB> {
+pub struct Transaction<DB> {
     pub(crate) inner: *mut ffi::rocksdb_transaction_t,
-    pub(crate) _marker: PhantomData<&'db DB>,
+    pub(crate) _marker: PhantomData<DB>,
 }
 
-unsafe impl<'db, DB> Send for Transaction<'db, DB> {}
+unsafe impl<DB> Send for Transaction<DB> {}
 
-impl<'db, DB> DBAccess for Transaction<'db, DB> {
+impl<DB> DBAccess for Transaction<DB> {
     unsafe fn create_snapshot(&self) -> *const ffi::rocksdb_snapshot_t {
         ffi::rocksdb_transaction_get_snapshot(self.inner)
     }
@@ -116,7 +116,7 @@ impl<'db, DB> DBAccess for Transaction<'db, DB> {
     }
 }
 
-impl<'db, DB> Transaction<'db, DB> {
+impl<DB> Transaction<DB> {
     /// Write all batched keys to the DB atomically.
     ///
     /// May return any error that could be returned by `DB::write`.
@@ -138,11 +138,20 @@ impl<'db, DB> Transaction<'db, DB> {
     /// [`Busy`]: crate::ErrorKind::Busy
     /// [`TryAgain`]: crate::ErrorKind::TryAgain
     /// [`Options::set_max_write_buffer_size_to_maintain`]: crate::Options::set_max_write_buffer_size_to_maintain
-    pub fn commit(self) -> Result<(), Error> {
-        unsafe {
-            ffi_try!(ffi::rocksdb_transaction_commit(self.inner));
+    pub fn commit(self: Arc<Self>) -> Result<(), Error> {
+        match Arc::try_unwrap(self) {
+            Ok(this) => {
+                unsafe {
+                    ffi_try!(ffi::rocksdb_transaction_commit(this.inner));
+                }
+                Ok(())
+            },
+            Err(_arc) => {
+                let msg = "Cannot commit a shared transaction reference";
+                Err(Error::new(msg.to_string()))
+            },
         }
-        Ok(())
+   
     }
 
     pub fn set_name(&self, name: &[u8]) -> Result<(), Error> {
@@ -183,8 +192,8 @@ impl<'db, DB> Transaction<'db, DB> {
     /// Otherwise, returns a snapshot with `nullptr` inside which doesn't effect read operations.
     ///
     /// [`TransactionOptions`]: crate::TransactionOptions
-    pub fn snapshot(&self) -> SnapshotWithThreadMode<Self> {
-        SnapshotWithThreadMode::new(self)
+    pub fn snapshot(self: &Arc<Self>) -> SnapshotWithThreadMode<Self> {
+        SnapshotWithThreadMode::new(self.clone())
     }
 
     /// Discard all batched writes in this transaction.
@@ -729,49 +738,49 @@ impl<'db, DB> Transaction<'db, DB> {
         Ok(())
     }
 
-    pub fn iterator<'a: 'b, 'b>(
-        &'a self,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    pub fn iterator(
+        &self,
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let readopts = ReadOptions::default();
         self.iterator_opt(mode, readopts)
     }
 
-    pub fn iterator_opt<'a: 'b, 'b>(
-        &'a self,
-        mode: IteratorMode,
+    pub fn iterator_opt(
+        &self,
+        mode: IteratorMode<&[u8]>,
         readopts: ReadOptions,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    ) -> DBIteratorWithThreadMode<Self> {
         DBIteratorWithThreadMode::new(self, readopts, mode)
     }
 
     /// Opens an iterator using the provided ReadOptions.
     /// This is used when you want to iterate over a specific ColumnFamily with a modified ReadOptions.
-    pub fn iterator_cf_opt<'a: 'b, 'b>(
-        &'a self,
+    pub fn iterator_cf_opt(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
         readopts: ReadOptions,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         DBIteratorWithThreadMode::new_cf(self, cf_handle.inner(), readopts, mode)
     }
 
     /// Opens an iterator with `set_total_order_seek` enabled.
     /// This must be used to iterate across prefixes when `set_memtable_factory` has been called
     /// with a Hash-based implementation.
-    pub fn full_iterator<'a: 'b, 'b>(
-        &'a self,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    pub fn full_iterator(
+        &self,
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_total_order_seek(true);
         DBIteratorWithThreadMode::new(self, opts, mode)
     }
 
-    pub fn prefix_iterator<'a: 'b, 'b, P: AsRef<[u8]>>(
-        &'a self,
+    pub fn prefix_iterator<P: AsRef<[u8]>>(
+        &self,
         prefix: P,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_prefix_same_as_start(true);
         DBIteratorWithThreadMode::new(
@@ -781,33 +790,33 @@ impl<'db, DB> Transaction<'db, DB> {
         )
     }
 
-    pub fn iterator_cf<'a: 'b, 'b>(
-        &'a self,
+    pub fn iterator_cf(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let opts = ReadOptions::default();
         DBIteratorWithThreadMode::new_cf(self, cf_handle.inner(), opts, mode)
     }
 
-    pub fn full_iterator_cf<'a: 'b, 'b>(
-        &'a self,
+    pub fn full_iterator_cf(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
-        mode: IteratorMode,
-    ) -> DBIteratorWithThreadMode<'b, Self> {
+        mode: IteratorMode<&[u8]>,
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_total_order_seek(true);
         DBIteratorWithThreadMode::new_cf(self, cf_handle.inner(), opts, mode)
     }
 
-    pub fn prefix_iterator_cf<'a, P: AsRef<[u8]>>(
-        &'a self,
+    pub fn prefix_iterator_cf<P: AsRef<[u8]>>(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
         prefix: P,
-    ) -> DBIteratorWithThreadMode<'a, Self> {
+    ) -> DBIteratorWithThreadMode<Self> {
         let mut opts = ReadOptions::default();
         opts.set_prefix_same_as_start(true);
-        DBIteratorWithThreadMode::<'a, Self>::new_cf(
+        DBIteratorWithThreadMode::<Self>::new_cf(
             self,
             cf_handle.inner(),
             opts,
@@ -816,34 +825,34 @@ impl<'db, DB> Transaction<'db, DB> {
     }
 
     /// Opens a raw iterator over the database, using the default read options
-    pub fn raw_iterator<'a: 'b, 'b>(&'a self) -> DBRawIteratorWithThreadMode<'b, Self> {
+    pub fn raw_iterator(&self) -> DBRawIteratorWithThreadMode<Self> {
         let opts = ReadOptions::default();
         DBRawIteratorWithThreadMode::new(self, opts)
     }
 
     /// Opens a raw iterator over the given column family, using the default read options
-    pub fn raw_iterator_cf<'a: 'b, 'b>(
-        &'a self,
+    pub fn raw_iterator_cf(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
-    ) -> DBRawIteratorWithThreadMode<'b, Self> {
+    ) -> DBRawIteratorWithThreadMode<Self> {
         let opts = ReadOptions::default();
         DBRawIteratorWithThreadMode::new_cf(self, cf_handle.inner(), opts)
     }
 
     /// Opens a raw iterator over the database, using the given read options
-    pub fn raw_iterator_opt<'a: 'b, 'b>(
-        &'a self,
+    pub fn raw_iterator_opt(
+        &self,
         readopts: ReadOptions,
-    ) -> DBRawIteratorWithThreadMode<'b, Self> {
+    ) -> DBRawIteratorWithThreadMode<Self> {
         DBRawIteratorWithThreadMode::new(self, readopts)
     }
 
     /// Opens a raw iterator over the given column family, using the given read options
-    pub fn raw_iterator_cf_opt<'a: 'b, 'b>(
-        &'a self,
+    pub fn raw_iterator_cf_opt(
+        &self,
         cf_handle: &impl AsColumnFamilyRef,
         readopts: ReadOptions,
-    ) -> DBRawIteratorWithThreadMode<'b, Self> {
+    ) -> DBRawIteratorWithThreadMode<Self> {
         DBRawIteratorWithThreadMode::new_cf(self, cf_handle.inner(), readopts)
     }
 
@@ -872,7 +881,7 @@ impl<'db, DB> Transaction<'db, DB> {
     }
 }
 
-impl<'db, DB> Drop for Transaction<'db, DB> {
+impl<DB> Drop for Transaction<DB> {
     fn drop(&mut self) {
         unsafe {
             ffi::rocksdb_transaction_destroy(self.inner);

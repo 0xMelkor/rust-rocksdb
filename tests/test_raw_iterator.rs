@@ -19,14 +19,14 @@ use pretty_assertions::assert_eq;
 use rocksdb::{DBAccess, DBRawIteratorWithThreadMode, DB};
 use util::DBPath;
 
-fn assert_item<D: DBAccess>(iter: &DBRawIteratorWithThreadMode<'_, D>, key: &[u8], value: &[u8]) {
+fn assert_item<D: DBAccess>(iter: &DBRawIteratorWithThreadMode<D>, key: &[u8], value: &[u8]) {
     assert!(iter.valid());
     assert_eq!(iter.key(), Some(key));
     assert_eq!(iter.value(), Some(value));
     assert_eq!(iter.item(), Some((key, value)));
 }
 
-fn assert_no_item<D: DBAccess>(iter: &DBRawIteratorWithThreadMode<'_, D>) {
+fn assert_no_item<D: DBAccess>(iter: &DBRawIteratorWithThreadMode<D>) {
     assert!(!iter.valid());
     assert_eq!(iter.key(), None);
     assert_eq!(iter.value(), None);
