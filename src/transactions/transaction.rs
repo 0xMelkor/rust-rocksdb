@@ -138,20 +138,12 @@ impl<DB> Transaction<DB> {
     /// [`Busy`]: crate::ErrorKind::Busy
     /// [`TryAgain`]: crate::ErrorKind::TryAgain
     /// [`Options::set_max_write_buffer_size_to_maintain`]: crate::Options::set_max_write_buffer_size_to_maintain
-    pub fn commit(self: Arc<Self>) -> Result<(), Error> {
-        match Arc::try_unwrap(self) {
-            Ok(this) => {
-                unsafe {
-                    ffi_try!(ffi::rocksdb_transaction_commit(this.inner));
-                }
-                Ok(())
-            },
-            Err(_arc) => {
-                let msg = "Cannot commit a shared transaction reference";
-                Err(Error::new(msg.to_string()))
-            },
+    pub fn commit(&self) -> Result<(), Error> {
+        unsafe {
+            ffi_try!(ffi::rocksdb_transaction_commit(self.inner));
         }
-   
+        Ok(())
+
     }
 
     pub fn set_name(&self, name: &[u8]) -> Result<(), Error> {

@@ -102,10 +102,11 @@ fn multi_get() {
 
         assert_values(values);
 
-        let values = DBAccess::multi_get_opt(db.as_ref(), [b"k0", b"k1", b"k2"], &Default::default())
-            .into_iter()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
+        let values =
+            DBAccess::multi_get_opt(db.as_ref(), [b"k0", b"k1", b"k2"], &Default::default())
+                .into_iter()
+                .map(Result::unwrap)
+                .collect::<Vec<_>>();
 
         assert_values(values);
 
@@ -408,10 +409,10 @@ fn transaction() {
             // modify same key in another transaction
             let txn2 = db.transaction();
             txn2.put(b"k1", b"v3").unwrap();
-            Arc::new(txn2).commit().unwrap();
+            txn2.commit().unwrap();
 
             // txn1 should fail with ErrorKind::Busy
-            let err = Arc::new(txn1).commit().unwrap_err();
+            let err = txn1.commit().unwrap_err();
             assert_eq!(err.kind(), ErrorKind::Busy);
         }
 
@@ -425,7 +426,7 @@ fn transaction() {
 
             // txn1 commit, txn2 should fail with Busy.
             txn1.commit().unwrap();
-            assert_eq!(Arc::new(txn2).commit().unwrap_err().kind(), ErrorKind::Busy);
+            assert_eq!(txn2.commit().unwrap_err().kind(), ErrorKind::Busy);
         }
     }
 }
